@@ -87,35 +87,35 @@ int main(int argc, char *argv[]){
     switch(length){
         case 32:
             filename = 
-            '/home/cluser/Documents/HPC/Matrix/Matrix32.txt';
+            "/home/cluser/Documents/HPC/Matrix/Matrix32.txt";
             break;
         case 64:
             filename = 
-            '/home/cluser/Documents/HPC/Matrix/Matrix64.txt';
+            "/home/cluser/Documents/HPC/Matrix/Matrix64.txt";
             break;
         case 128:
             filename = 
-            '/home/cluser/Documents/HPC/Matrix/Matrix128.txt';
+            "/home/cluser/Documents/HPC/Matrix/Matrix128.txt";
             break;
         case 256:
             filename = 
-            '/home/cluser/Documents/HPC/Matrix/Matrix256.txt';
+            "/home/cluser/Documents/HPC/Matrix/Matrix256.txt";
             break;
         case 512:
             filename = 
-            '/home/cluser/Documents/HPC/Matrix/Matrix512.txt';
+            "/home/cluser/Documents/HPC/Matrix/Matrix512.txt";
             break;
         case 1024:
             filename = 
-            '/home/cluser/Documents/HPC/Matrix/Matrix1024.txt';
+            "/home/cluser/Documents/HPC/Matrix/Matrix1024.txt";
             break;
         case 2048:
             filename = 
-            '/home/cluser/Documents/HPC/Matrix/Matrix2048.txt';
+            "/home/cluser/Documents/HPC/Matrix/Matrix2048.txt";
             break;
         default:
             filename = 
-            '/home/cluser/Documents/HPC/Matrix/Matrix32.txt';
+            "/home/cluser/Documents/HPC/Matrix/Matrix32.txt";
             break;
     }
 
