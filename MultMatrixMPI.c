@@ -3,10 +3,11 @@
 #include <time.h>
 #include <string.h>
 #include <unistd.h>
+#include <mpi.h>
 
-void MultMatrix(int **matrixA, int **matrixB, int **resultado, int length) 
+void MultBlock(int **matrixA, int **matrixB, int **resultado, int startRow, int endRow, int length) 
 {
-    for (int i = 0; i < length; i++) {
+    for (int i = startRow; i < endRow; i++) {
         for (int j = 0; j < length; j++) {
             resultado[i][j] = 0;
             for (int k = 0; k < length; k++) {
@@ -70,15 +71,21 @@ void ReadMatrixFromFile(const char *filename, int **matrix, int length)
 }
 
 int main(int argc, char *argv[]){
+    MPI_Init(&argc, &argv);
 
     double time_spent = 0.0;
     clock_t begin = clock();
     int length = atoi(argv[1]);
     int verbose = 0;
+    int rank, size;
     int **matrixA;
     int **matrixB;
     int **matrixResult;
     const char *filename;
+
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
 
     if (argc > 2 && strcmp(argv[2], "-v") == 0) {
         verbose = 1;
@@ -126,7 +133,18 @@ int main(int argc, char *argv[]){
     ReadMatrixFromFile(filename, matrixA, length);
     ReadMatrixFromFile(filename, matrixB, length);
 
-    MultMatrix(matrixA, matrixB, matrixResult, length);
+    int rowsPerProcess = length / size;
+    int startRow = rank * rowsPerProcess;
+    int endRow = (rank == size - 1) ? length : startRow + rowsPerProcess;
+
+    int **localResult = GenerateMatrix(length);
+
+
+    MultBlock(matrixA, matrixB, localResult, startRow, endRow, length);
+
+    MPI_Gather(&(localResult[startRow][0]), (endRow - startRow) * length, MPI_INT,
+               &(matrixResult[0][0]), (endRow - startRow) * length, MPI_INT, 0, MPI_COMM_WORLD);
+
 
     if(verbose){
         PrintMatriz(matrixResult, length);
@@ -134,6 +152,7 @@ int main(int argc, char *argv[]){
 
     FreeMatrix(matrixA, length);
     FreeMatrix(matrixB, length);
+    FreeMatrix(localResult, length);
     FreeMatrix(matrixResult, length);
 
     clock_t end = clock();
@@ -141,6 +160,8 @@ int main(int argc, char *argv[]){
     time_spent += (double)(end - begin) / CLOCKS_PER_SEC;
 
     printf("%f \n", time_spent);
+
+    MPI_Finalize();
 
     return 0;
 }
