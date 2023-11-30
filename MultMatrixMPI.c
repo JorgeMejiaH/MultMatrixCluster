@@ -17,6 +17,20 @@ void MultBlock(int **matrixA, int **matrixB, int **resultado, int startRow, int 
     }
 }
 
+void mostrarMatriz(int *matrix, int length) {
+    int j;
+    for (int i = 0; i < length; i++) {
+        for (j = 0; j < length; j++) {
+            printf("%4d |", matrix[i * length + j]);
+        }
+        printf("\n");
+        for (j = 0; j < length - 1; j++) {
+            printf("------+");
+        }
+        printf("\n");
+    }
+}
+
 void PrintMatriz(int **matriz, int length) 
 {
     for (int i = 0; i < length; i++) {
@@ -34,7 +48,7 @@ int** GenerateMatrix(int length)
     matrix = (int **)malloc(length * sizeof(int *));
 
     for(int i = 0; i < length; i++){
-        matrix[i] = (int *)malloc(length * sizeof(int *));
+        matrix[i] = (int *)malloc(length * sizeof(int));
     }
 
     return matrix;
@@ -49,38 +63,25 @@ void FreeMatrix(int **matrix, int length)
     free(matrix);
 }
 
-void ReadMatrixFromFile(const char *filename, int **matrix, int length) 
+void ReadMatrixFromFile(const char *filename, int *matrix, int length) 
 {
     FILE *file = fopen(filename, "r");
-    if (file == NULL) {
-        perror("Error opening file");
-        exit(EXIT_FAILURE);
+    if (file != NULL) {
+        fwrite(matrix, sizeof(int), length * length, file);
+        fclose(file);
+    } else {
+        fprintf(stderr, "Error opening file for writing: %s\n", filename);
     }
-
-    for (int i = 0; i < length; i++) {
-        for (int j = 0; j < length; j++) {
-            if (fscanf(file, "%d", &matrix[i][j]) != 1) {
-                fprintf(stderr, "Error reading from file");
-                fclose(file);
-                exit(EXIT_FAILURE);
-            }
-        }
-    }
-
-    fclose(file);
 }
 
 int main(int argc, char *argv[]){
     MPI_Init(&argc, &argv);
 
-    double time_spent = 0.0;
-    clock_t begin = clock();
+    struct timespec start, end;
+    double elapsed_time;
     int length = atoi(argv[1]);
     int verbose = 0;
     int rank, size;
-    int **matrixA;
-    int **matrixB;
-    int **matrixResult;
     const char *filename;
 
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -91,6 +92,8 @@ int main(int argc, char *argv[]){
         verbose = 1;
     }
     
+    MPI_Barrier(MPI_COMM_WORLD);
+
     switch(length){
         case 32:
             filename = 
@@ -126,40 +129,72 @@ int main(int argc, char *argv[]){
             break;
     }
 
-    matrixA = GenerateMatrix(length);
-    matrixB = GenerateMatrix(length);
-    matrixResult = GenerateMatrix(length);
+    if (rank == 0){
+        clock_gettime(CLOCK_MONOTONIC, &start);
+    }
+
+    int *matrixA = (int *)malloc(length * length * sizeof(int));
+    int *matrixB = (int *)malloc(length * length * sizeof(int));
+    int *result = (int *)malloc(length * length * sizeof(int));
+    int *gathered_result = NULL;
 
     ReadMatrixFromFile(filename, matrixA, length);
     ReadMatrixFromFile(filename, matrixB, length);
 
-    int rowsPerProcess = length / size;
-    int startRow = rank * rowsPerProcess;
-    int endRow = (rank == size - 1) ? length : startRow + rowsPerProcess;
+    int rows_per_process = length / size;
+    int extra_rows = length % size;
+    int start_row = rank * rows_per_process;
+    int end_row = start_row + rows_per_process + (rank == size - 1 ? extra_rows : 0);
 
     int **localResult = GenerateMatrix(length);
 
 
-    MultBlock(matrixA, matrixB, localResult, startRow, endRow, length);
-
-    MPI_Gather(&(localResult[startRow][0]), (endRow - startRow) * length, MPI_INT,
-               &(matrixResult[0][0]), (endRow - startRow) * length, MPI_INT, 0, MPI_COMM_WORLD);
-
-
-    if(verbose){
-        PrintMatriz(matrixResult, length);
+    for (int i = start_row; i < end_row; i++) {
+        for (int j = 0; j < length; j++) {
+            result[i * length + j] = 0;
+            for (int k = 0; k < length; k++) {
+                result[i * length + j] += matrixA[i * length + k] * matrixB[k * length + j];
+            }
+        }
     }
 
-    FreeMatrix(matrixA, length);
-    FreeMatrix(matrixB, length);
-    FreeMatrix(localResult, length);
-    FreeMatrix(matrixResult, length);
+    MPI_Barrier(MPI_COMM_WORLD);
 
-    clock_t end = clock();
+    if (rank == 0) {
+        gathered_result = (int *)malloc(length * length * sizeof(int));
+    }
 
-    time_spent += (double)(end - begin) / CLOCKS_PER_SEC;
+    int local_rows = (rank == size - 1) ? rows_per_process + extra_rows : rows_per_process;
 
-    printf("%f \n", time_spent);
+
+    MPI_Gather(
+        result + start_row * length,   // Send buffer: the local portion of the result array for the current process
+        local_rows * length,           // Number of elements to send from the send buffer
+        MPI_INT,                       // Data type of each element in the send buffer (integer in this case)
+        gathered_result,               // Receive buffer: the buffer where the root process will gather data
+        local_rows * length,           // Number of elements to receive from each process
+        MPI_INT,                       // Data type of each element in the receive buffer (integer in this case)
+        0,                             // Root process (the process that will receive the gathered data)
+        MPI_COMM_WORLD                 // Communicator (in this case, the world communicator)
+    );
+
+    if (rank == 0){
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        elapsed_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+
+        printf("%f\n", elapsed_time);
+        if(verbose){
+        mostrarMatriz(gathered_result, length);
+        }
+    }
+    
+
+    free(matrixA);
+    free(matrixB);
+    free(result);
+    free(gathered_result);
+
+    MPI_Barrier(MPI_COMM_WORLD);
 
     MPI_Finalize();
 
